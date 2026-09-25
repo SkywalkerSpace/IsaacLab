@@ -18,6 +18,16 @@ gym.register(
 )
 
 gym.register(
+    id="IsaacContrib-PickPlace-GR1T2-GR00T-Abs",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.custom_pick_place_gr1t2_env_cfg:CollectPickPlaceGR1T2EnvCfg",
+        "robomimic_bc_cfg_entry_point": f"{agents.__name__}:robomimic/bc_rnn_low_dim.json",
+    },
+    disable_env_checker=True,
+)
+
+gym.register(
     id="IsaacContrib-NutPour-GR1T2-Pink-IK-Abs",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     kwargs={

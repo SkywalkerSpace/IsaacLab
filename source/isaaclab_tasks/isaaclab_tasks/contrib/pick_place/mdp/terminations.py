@@ -87,6 +87,41 @@ def task_done_pick_place(
     return done
 
 
+def task_done_object_near_target(
+    env: ManagerBasedRLEnv,
+    task_link_name: str,
+    object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
+    target_cfg: SceneEntityCfg = SceneEntityCfg("object_2"),
+    max_xy_distance: float = 0.10,
+    max_height_difference: float = 0.08,
+    max_height: float = 1.5,
+    right_wrist_max_x: float = 0.26,
+    min_vel: float = 0.20,
+) -> torch.Tensor:
+    """Success when object 1 is settled near object 2 and the hand retracts."""
+    if not task_link_name:
+        raise ValueError("task_link_name must be provided to task_done_object_near_target")
+
+    obj = env.scene[object_cfg.name]
+    target = env.scene[target_cfg.name]
+    obj_pos = obj.data.root_pos_w.torch - env.scene.env_origins
+    target_pos = target.data.root_pos_w.torch - env.scene.env_origins
+    xy_distance = torch.linalg.vector_norm(obj_pos[:, :2] - target_pos[:, :2], dim=1)
+    height_difference = torch.abs(obj_pos[:, 2] - target_pos[:, 2])
+    velocity = torch.abs(obj.data.root_vel_w.torch)
+
+    robot = env.scene["robot"]
+    wrist_idx = robot.data.body_names.index(task_link_name)
+    wrist_x = robot.data.body_pos_w.torch[:, wrist_idx, 0] - env.scene.env_origins[:, 0]
+
+    done = xy_distance < max_xy_distance
+    done = torch.logical_and(done, height_difference < max_height_difference)
+    done = torch.logical_and(done, obj_pos[:, 2] < max_height)
+    done = torch.logical_and(done, wrist_x < right_wrist_max_x)
+    done = torch.logical_and(done, torch.all(velocity < min_vel, dim=1))
+    return done
+
+
 def task_done_nut_pour(
     env: ManagerBasedRLEnv,
     sorting_scale_cfg: SceneEntityCfg = SceneEntityCfg("sorting_scale"),

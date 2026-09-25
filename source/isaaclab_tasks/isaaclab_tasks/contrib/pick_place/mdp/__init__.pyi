@@ -15,6 +15,7 @@ __all__ = [
     "task_done_exhaust_pipe",
     "task_done_nut_pour",
     "task_done_pick_place",
+    "task_done_object_near_target",
 ]
 
 from .observations import (
@@ -27,5 +28,5 @@ from .observations import (
     object_obs,
 )
 from .pick_place_events import reset_object_poses_nut_pour
-from .terminations import task_done_exhaust_pipe, task_done_nut_pour, task_done_pick_place
+from .terminations import task_done_exhaust_pipe, task_done_nut_pour, task_done_object_near_target, task_done_pick_place
 from isaaclab.envs.mdp import *
