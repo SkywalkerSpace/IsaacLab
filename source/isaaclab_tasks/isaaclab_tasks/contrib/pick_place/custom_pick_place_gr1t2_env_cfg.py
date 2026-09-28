@@ -3,7 +3,12 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""GR1T2 pick-place task with the two local ACG assets on the table."""
+"""GR1T2 pick-place task with the two local ACG assets on the table.
+
+uv run --extra teleop,isaacsim isaaclab teleop run \
+    --task IsaacContrib-PickPlace-GR1T2-GR00T-Abs --visualizer kit --xr \
+    --enable_debug_visualization --disable_external_cameras
+"""
 
 from pathlib import Path
 
@@ -29,8 +34,8 @@ _OBJECT_2_USD = _ASSET_DIR / "box_cleanup_bin.usd"
 # Adjust these world-space coordinates [m] to move the assets on the tabletop.
 # X/Y set the tabletop location and Z sets the root prim height. Restart the
 # environment after editing; the reset event returns each object to this pose.
-OBJECT_1_POSITION = (-0.30, 0.35, 1.01)
-OBJECT_2_POSITION = (0.1, 0.35, 1.11)
+OBJECT_1_POSITION = (-0.20, 0.35, 1.01)
+OBJECT_2_POSITION = (0.20, 0.35, 1.07)
 
 # Uniform USD scale factors. Change these values to adjust each object's size.
 OBJECT_1_SCALE = (0.8, 0.8, 0.8)
@@ -74,6 +79,17 @@ class CollectSceneCfg(PickPlaceGR1T2SceneCfg):
 
     # The inherited packing table USD is only a table; it contains no basket.
     # The inherited steering wheel is replaced by the custom object below.
+
+    # Raise both forearms by 45 degrees from the stock horizontal pose.
+    robot = _BASE_SCENE_CFG.robot.replace(
+        init_state=_BASE_SCENE_CFG.robot.init_state.replace(
+            joint_pos={
+                **_BASE_SCENE_CFG.robot.init_state.joint_pos,
+                "right_elbow_pitch_joint": -2.260,
+                "left_elbow_pitch_joint": -2.260,
+            }
+        )
+    )
 
     packing_table = _BASE_SCENE_CFG.packing_table.replace(
         spawn=_BASE_SCENE_CFG.packing_table.spawn.replace(
