@@ -6,8 +6,39 @@
 """GR1T2 pick-place task with the two local ACG assets on the table.
 
 uv run --extra teleop,isaacsim isaaclab teleop run \
-    --task IsaacContrib-PickPlace-GR1T2-GR00T-Abs --visualizer kit --xr \
-    --enable_debug_visualization --disable_external_cameras
+--task IsaacContrib-PickPlace-GR1T2-GR00T-Abs \
+--visualizer kit \
+--xr \
+--enable_debug_visualization --disable_external_cameras
+
+uv run --extra teleop,isaacsim isaaclab teleop record \
+--task IsaacContrib-PickPlace-GR1T2-GR00T-Abs \
+--visualizer kit \
+--xr \
+--device cpu \
+--num_demos 5 \
+--dataset_file ./datasets/dataset_gr1_gr00t.hdf5 \
+--enable_debug_visualization --disable_external_cameras
+
+uv run --extra teleop,isaacsim isaaclab teleop replay \
+--task IsaacContrib-PickPlace-GR1T2-GR00T-Abs \
+--visualizer kit \
+--device cpu \
+--dataset_file ./datasets/dataset_gr1_gr00t.hdf5
+
+uv run --extra isaacsim,mimic python scripts/imitation_learning/isaaclab_mimic/annotate_demos.py \
+--task Isaac-PickPlace-GR1T2-Abs-Mimic-v0 \
+--visualizer kit \
+--device cpu \
+--input_file ./datasets/dataset_gr1.hdf5 \
+--output_file ./datasets/dataset_annotated_gr1_gr00t.hdf5
+
+uv run --extra isaacsim,mimic python scripts/imitation_learning/isaaclab_mimic/generate_dataset.py \
+--device cpu \
+--num_envs 20 \
+--generation_num_trials 1000 \
+--input_file ./datasets/dataset_annotated_gr1_gr00t.hdf5 \
+--output_file ./datasets/generated_dataset_gr1_gr00t.hdf5
 """
 
 from pathlib import Path
@@ -34,8 +65,8 @@ _OBJECT_2_USD = _ASSET_DIR / "box_cleanup_bin.usd"
 # Adjust these world-space coordinates [m] to move the assets on the tabletop.
 # X/Y set the tabletop location and Z sets the root prim height. Restart the
 # environment after editing; the reset event returns each object to this pose.
-OBJECT_1_POSITION = (-0.20, 0.35, 1.01)
-OBJECT_2_POSITION = (0.20, 0.35, 1.07)
+OBJECT_1_POSITION = (-0.05, 0.30, 1.01)
+OBJECT_2_POSITION = (0.05, 0.55, 1.07)
 
 # Uniform USD scale factors. Change these values to adjust each object's size.
 OBJECT_1_SCALE = (0.8, 0.8, 0.8)
