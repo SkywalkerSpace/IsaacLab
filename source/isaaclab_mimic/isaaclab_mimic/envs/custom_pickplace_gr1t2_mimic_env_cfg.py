@@ -12,16 +12,112 @@ from isaaclab.envs.mimic_env_cfg import (
     SubTaskConstraintCoordinationScheme,
     SubTaskConstraintType,
 )
+import isaaclab.envs.mdp as base_mdp
+import isaaclab.sim as sim_utils
+from isaaclab.envs.mdp.recorders.recorders_cfg import ActionStateRecorderManagerCfg
+from isaaclab.managers import ObservationTermCfg as ObsTerm
+from isaaclab.managers import SceneEntityCfg
+from isaaclab.sensors import CameraCfg
 from isaaclab.utils.configclass import configclass
 
 from isaaclab_tasks.contrib.pick_place.custom_pick_place_gr1t2_env_cfg import (
+    CollectSceneCfg,
     CollectPickPlaceGR1T2EnvCfg,
 )
+from isaaclab_tasks.contrib.pick_place.pickplace_gr1t2_env_cfg import PickPlaceGR1T2ObservationsCfg
+from isaaclab_tasks.contrib.robot_pov_camera_cfg import robot_pov_camera_cfg
+
+
+@configclass
+class CustomPickPlaceGR1T2MimicSceneCfg(CollectSceneCfg):
+    """Custom pick-place scene with cameras mounted above both wrists."""
+
+    robot_pov_cam = robot_pov_camera_cfg(
+        parent_prim_path="{ENV_REGEX_NS}/Robot/base_link",
+        offset_pos=(0.11999996, -0.00000233, 0.74674994),
+        offset_rot=(-0.69303199, 0.69304552, -0.14034840, 0.14034565),
+    )
+    robot_pov_cam.height = 256
+    robot_pov_cam.width = 256
+
+    left_wrist_cam = CameraCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/left_hand_pitch_link/LeftWristCam",
+        update_period=0.0,
+        height=256,
+        width=256,
+        data_types=["rgb"],
+        spawn=sim_utils.PinholeCameraCfg(focal_length=18.15, clipping_range=(0.1, 2.0)),
+        # Mirror the right camera across the palm: mount on +Y and aim toward the fingers (-Z).
+        offset=CameraCfg.OffsetCfg(
+            pos=(0.0, 0.15, 0.0), rot=(0.92387953, 0.0, 0.0, 0.38268343), convention="ros"
+        ),
+    )
+    right_wrist_cam = CameraCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/right_hand_pitch_link/RightWristCam",
+        update_period=0.0,
+        height=256,
+        width=256,
+        data_types=["rgb"],
+        spawn=sim_utils.PinholeCameraCfg(focal_length=18.15, clipping_range=(0.1, 2.0)),
+        offset=CameraCfg.OffsetCfg(
+            pos=(0.0, -0.15, 0.0), rot=(-0.92387953, 0.0, 0.0, 0.38268343), convention="ros"
+        ),
+    )
+
+
+@configclass
+class CustomPickPlaceGR1T2MimicObservationsCfg(PickPlaceGR1T2ObservationsCfg):
+    """RGB observations from the head and both wrist cameras."""
+
+    @configclass
+    class PolicyCfg(PickPlaceGR1T2ObservationsCfg.PolicyCfg):
+        robot_pov_cam = ObsTerm(
+            func=base_mdp.image,
+            params={
+                "sensor_cfg": SceneEntityCfg("robot_pov_cam"),
+                "data_type": "rgb",
+                "normalize": False,
+                "clone": False,
+            },
+        )
+        left_wrist_cam = ObsTerm(
+            func=base_mdp.image,
+            params={
+                "sensor_cfg": SceneEntityCfg("left_wrist_cam"),
+                "data_type": "rgb",
+                "normalize": False,
+                "clone": False,
+            },
+        )
+        right_wrist_cam = ObsTerm(
+            func=base_mdp.image,
+            params={
+                "sensor_cfg": SceneEntityCfg("right_wrist_cam"),
+                "data_type": "rgb",
+                "normalize": False,
+                "clone": False,
+            },
+        )
+
+    policy: PolicyCfg = PolicyCfg()
+
+
+@configclass
+class CustomPickPlaceGR1T2MimicRecorderManagerCfg(ActionStateRecorderManagerCfg):
+    """Record policy observations, including all three RGB cameras, in episodes."""
 
 
 @configclass
 class CustomPickPlaceGR1T2MimicEnvCfg(CollectPickPlaceGR1T2EnvCfg, MimicEnvCfg):
     """Mimic config using the custom object and target from the GR00T collection task."""
+
+    scene: CustomPickPlaceGR1T2MimicSceneCfg = CustomPickPlaceGR1T2MimicSceneCfg(
+        num_envs=1, env_spacing=2.5, replicate_physics=True
+    )
+    observations: CustomPickPlaceGR1T2MimicObservationsCfg = CustomPickPlaceGR1T2MimicObservationsCfg()
+    mimic_recorder_config: CustomPickPlaceGR1T2MimicRecorderManagerCfg = (
+        CustomPickPlaceGR1T2MimicRecorderManagerCfg()
+    )
 
     def __post_init__(self):
         super().__post_init__()

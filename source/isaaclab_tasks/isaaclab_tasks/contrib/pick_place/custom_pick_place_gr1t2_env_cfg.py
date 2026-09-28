@@ -48,10 +48,12 @@ from pxr import Usd
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import RigidObjectCfg
+from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import SceneEntityCfg, TerminationTermCfg as DoneTerm
-from isaaclab.sensors import ContactSensorCfg
+from isaaclab.sensors import CameraCfg, ContactSensorCfg
 from isaaclab.utils.configclass import configclass
 from isaaclab_tasks.contrib.pick_place import mdp
+from isaaclab_tasks.contrib.pick_place.pickplace_gr1t2_env_cfg import PickPlaceGR1T2ObservationsCfg
 
 from isaaclab_tasks.contrib.pick_place.pickplace_gr1t2_env_cfg import (
     PickPlaceGR1T2EnvCfg,
@@ -111,6 +113,30 @@ class CollectSceneCfg(PickPlaceGR1T2SceneCfg):
 
     # The inherited packing table USD is only a table; it contains no basket.
     # The inherited steering wheel is replaced by the custom object below.
+
+    left_wrist_cam = CameraCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/left_hand_pitch_link/LeftWristCam",
+        update_period=0.0,
+        height=256,
+        width=256,
+        data_types=["rgb"],
+        spawn=sim_utils.PinholeCameraCfg(focal_length=18.15, clipping_range=(0.1, 2.0)),
+        # Mirror the right camera across the palm: mount on +Y and aim toward the fingers (-Z).
+        offset=CameraCfg.OffsetCfg(
+            pos=(0.0, 0.15, 0.0), rot=(0.92387953, 0.0, 0.0, 0.38268343), convention="ros"
+        ),
+    )
+    right_wrist_cam = CameraCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/right_hand_pitch_link/RightWristCam",
+        update_period=0.0,
+        height=256,
+        width=256,
+        data_types=["rgb"],
+        spawn=sim_utils.PinholeCameraCfg(focal_length=18.15, clipping_range=(0.1, 2.0)),
+        offset=CameraCfg.OffsetCfg(
+            pos=(0.0, -0.15, 0.0), rot=(-0.92387953, 0.0, 0.0, 0.38268343), convention="ros"
+        ),
+    )
 
     # Raise both forearms by 45 degrees from the stock horizontal pose.
     robot = _BASE_SCENE_CFG.robot.replace(
@@ -172,8 +198,36 @@ class CollectPickPlaceGR1T2EnvCfg(PickPlaceGR1T2EnvCfg):
 
     scene: CollectSceneCfg = CollectSceneCfg(num_envs=1, env_spacing=2.5, replicate_physics=True)
 
+    @configclass
+    class ObservationsCfg(PickPlaceGR1T2ObservationsCfg):
+        @configclass
+        class PolicyCfg(PickPlaceGR1T2ObservationsCfg.PolicyCfg):
+            left_wrist_cam = ObsTerm(
+                func=mdp.image,
+                params={
+                    "sensor_cfg": SceneEntityCfg("left_wrist_cam"),
+                    "data_type": "rgb",
+                    "normalize": False,
+                    "clone": False,
+                },
+            )
+            right_wrist_cam = ObsTerm(
+                func=mdp.image,
+                params={
+                    "sensor_cfg": SceneEntityCfg("right_wrist_cam"),
+                    "data_type": "rgb",
+                    "normalize": False,
+                    "clone": False,
+                },
+            )
+
+        policy: PolicyCfg = PolicyCfg()
+
+    observations: ObservationsCfg = ObservationsCfg()
+
     def __post_init__(self):
         super().__post_init__()
+        self.image_obs_list = ["robot_pov_cam", "left_wrist_cam", "right_wrist_cam"]
         # Contact sensors in the inherited scene now measure the fixture at Object.
         self.haptic_feedback.left_sensor_name = "left_hand_contact"
         self.haptic_feedback.right_sensor_name = "right_hand_contact"
