@@ -119,7 +119,12 @@ def get_delta_pose_with_scheme(
     coord_transform_scheme = task_constraint["coordination_scheme"]
     device = src_obj_pose.device
     if coord_transform_scheme == SubTaskConstraintCoordinationScheme.TRANSFORM:
-        delta_pose = PoseUtils.get_delta_object_pose(cur_obj_pose, src_obj_pose)
+        # T_cur_src = T_world_cur @ inverse(T_world_src). The older
+        # get_delta_object_pose helper is not part of isaaclab.utils.math.
+        delta_pose = PoseUtils.pose_in_A_to_pose_in_B(
+            pose_in_A=PoseUtils.pose_inv(src_obj_pose),
+            pose_A_in_B=cur_obj_pose,
+        )
         # add noise to delta pose position
     elif coord_transform_scheme == SubTaskConstraintCoordinationScheme.TRANSLATE:
         delta_pose = torch.eye(4, device=device)

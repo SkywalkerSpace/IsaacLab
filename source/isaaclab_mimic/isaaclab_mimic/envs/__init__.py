@@ -176,6 +176,17 @@ gym.register(
 )
 
 gym.register(
+    id="IsaacContrib-PickPlace-GR1T2-GR00T-Abs-Mimic-v0",
+    entry_point=f"{__name__}.custom_pickplace_gr1t2_mimic_env:CustomPickPlaceGR1T2MimicEnv",
+    kwargs={
+        "env_cfg_entry_point": (
+            f"{__name__}.custom_pickplace_gr1t2_mimic_env_cfg:CustomPickPlaceGR1T2MimicEnvCfg"
+        ),
+    },
+    disable_env_checker=True,
+)
+
+gym.register(
     id="Isaac-PickPlace-GR1T2-WaistEnabled-Abs-Mimic-v0",
     entry_point=f"{__name__}.pickplace_gr1t2_mimic_env:PickPlaceGR1T2MimicEnv",
     kwargs={

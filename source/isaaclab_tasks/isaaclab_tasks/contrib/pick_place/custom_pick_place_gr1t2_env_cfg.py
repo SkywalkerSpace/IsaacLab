@@ -27,14 +27,15 @@ uv run --extra teleop,isaacsim isaaclab teleop replay \
 --dataset_file ./datasets/dataset_gr1_gr00t.hdf5
 
 uv run --extra isaacsim,mimic python scripts/imitation_learning/isaaclab_mimic/annotate_demos.py \
---task Isaac-PickPlace-GR1T2-Abs-Mimic-v0 \
+--task IsaacContrib-PickPlace-GR1T2-GR00T-Abs-Mimic-v0 \
 --visualizer kit \
 --device cpu \
---input_file ./datasets/dataset_gr1.hdf5 \
+--input_file ./datasets/dataset_gr1_gr00t.hdf5 \
 --output_file ./datasets/dataset_annotated_gr1_gr00t.hdf5
 
 uv run --extra isaacsim,mimic python scripts/imitation_learning/isaaclab_mimic/generate_dataset.py \
 --device cpu \
+--task IsaacContrib-PickPlace-GR1T2-GR00T-Abs-Mimic-v0 \
 --num_envs 20 \
 --generation_num_trials 1000 \
 --input_file ./datasets/dataset_annotated_gr1_gr00t.hdf5 \
