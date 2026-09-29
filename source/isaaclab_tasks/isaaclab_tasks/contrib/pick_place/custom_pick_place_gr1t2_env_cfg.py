@@ -48,6 +48,7 @@ from pxr import Usd
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import RigidObjectCfg
+from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import SceneEntityCfg, TerminationTermCfg as DoneTerm
 from isaaclab.sensors import CameraCfg, ContactSensorCfg
@@ -197,6 +198,42 @@ class CollectPickPlaceGR1T2EnvCfg(PickPlaceGR1T2EnvCfg):
     """Stock GR1T2 XR pick-place workflow using the local fixture and peg."""
 
     scene: CollectSceneCfg = CollectSceneCfg(num_envs=1, env_spacing=2.5, replicate_physics=True)
+
+    # Randomize tabletop placement and heading on every reset. The ranges are
+    # offsets from OBJECT_1_POSITION / OBJECT_2_POSITION, with yaw in radians.
+    @configclass
+    class EventCfg:
+        reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
+
+        reset_object = EventTerm(
+            func=mdp.reset_root_state_uniform,
+            mode="reset",
+            params={
+                "pose_range": {
+                    "x": (-0.05, 0.05),
+                    "y": (-0.05, 0.05),
+                    "yaw": (-1.57079, 1.57079),
+                },
+                "velocity_range": {},
+                "asset_cfg": SceneEntityCfg("object"),
+            },
+        )
+
+        reset_object_2 = EventTerm(
+            func=mdp.reset_root_state_uniform,
+            mode="reset",
+            params={
+                "pose_range": {
+                    "x": (-0.05, 0.05),
+                    "y": (0.0, 0.05),
+                    "yaw": (-1.57079, 1.57079),
+                },
+                "velocity_range": {},
+                "asset_cfg": SceneEntityCfg("object_2"),
+            },
+        )
+
+    events: EventCfg = EventCfg()
 
     @configclass
     class ObservationsCfg(PickPlaceGR1T2ObservationsCfg):

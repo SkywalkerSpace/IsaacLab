@@ -15,6 +15,7 @@ from isaaclab.envs.mimic_env_cfg import (
 import isaaclab.envs.mdp as base_mdp
 import isaaclab.sim as sim_utils
 from isaaclab.envs.mdp.recorders.recorders_cfg import ActionStateRecorderManagerCfg
+from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import CameraCfg
@@ -118,6 +119,42 @@ class CustomPickPlaceGR1T2MimicEnvCfg(CollectPickPlaceGR1T2EnvCfg, MimicEnvCfg):
     mimic_recorder_config: CustomPickPlaceGR1T2MimicRecorderManagerCfg = (
         CustomPickPlaceGR1T2MimicRecorderManagerCfg()
     )
+
+    # Keep Mimic resets consistent with the collection environment: randomize
+    # each object's tabletop position and yaw around its configured default.
+    @configclass
+    class EventCfg:
+        reset_all = EventTerm(func=base_mdp.reset_scene_to_default, mode="reset")
+
+        reset_object = EventTerm(
+            func=base_mdp.reset_root_state_uniform,
+            mode="reset",
+            params={
+                "pose_range": {
+                    "x": (-0.05, 0.05),
+                    "y": (-0.05, 0.05),
+                    "yaw": (-1.57079, 1.57079),
+                },
+                "velocity_range": {},
+                "asset_cfg": SceneEntityCfg("object"),
+            },
+        )
+
+        reset_object_2 = EventTerm(
+            func=base_mdp.reset_root_state_uniform,
+            mode="reset",
+            params={
+                "pose_range": {
+                    "x": (-0.05, 0.05),
+                    "y": (0.0, 0.05),
+                    "yaw": (-1.57079, 1.57079),
+                },
+                "velocity_range": {},
+                "asset_cfg": SceneEntityCfg("object_2"),
+            },
+        )
+
+    events: EventCfg = EventCfg()
 
     def __post_init__(self):
         super().__post_init__()
