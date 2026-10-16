@@ -155,7 +155,7 @@ skrl = ["skrl>=2.1.0"]
 
 rl-games = [
     "aiohttp==3.14.1",  # match isaacsim-kernel 6.1
-    "rl-games @ git+https://github.com/isaac-sim/rl_games.git@5cf4f9ff07e9a01bbefd167cf19b6804b294b51c",
+    "rl-games @ git+https://v6.gh-proxy.org/https://github.com/isaac-sim/rl_games.git@5cf4f9ff07e9a01bbefd167cf19b6804b294b51c",
     "gym",
     "standard-distutils",
 ]
@@ -183,7 +183,7 @@ mimic = [
     "isaaclab-mimic",
     "isaaclab-teleop",
     "ipywidgets>=8.1.5",
-    "robomimic @ git+https://github.com/ARISE-Initiative/robomimic.git@v0.4.0 ; sys_platform == 'linux'",
+    "robomimic @ git+https://v6.gh-proxy.org/https://github.com/ARISE-Initiative/robomimic.git@v0.4.0 ; sys_platform == 'linux'",
 ]
 
 # XR teleop needs the Kit XR runtime, but Isaac Sim is a separate extra so environments that
