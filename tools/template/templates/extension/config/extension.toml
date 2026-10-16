@@ -11,7 +11,7 @@ title = "{{ name }} UI Extension"
 author = "{{ authors_toml }}"
 maintainer = "{{ authors_toml }}"
 description="Isaac Sim UI extension for {{ name }}"
-repository = "https://github.com/isaac-sim/IsaacLab.git"
+repository = "https://v6.gh-proxy.org/https://github.com/isaac-sim/IsaacLab.git"
 keywords = ["extension", "template", "isaaclab"]
 
 [dependencies]
