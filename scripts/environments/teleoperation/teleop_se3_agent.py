@@ -324,7 +324,7 @@ def main() -> None:  # noqa: C901
                 " ignored."
             )
     except Exception as e:
-        logger.error(f"Failed to create environment: {e}")
+        logger.exception("Failed to create environment")
         simulation_app.close()
         return
 
@@ -522,7 +522,7 @@ def main() -> None:  # noqa: C901
                         should_reset_recording_instance = False
                         print("Environment reset complete")
             except Exception as e:
-                logger.error(f"Error during simulation step: {e}")
+                logger.exception("Error during simulation step")
                 break
 
     # Run the teleoperation loop
