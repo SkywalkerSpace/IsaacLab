@@ -83,7 +83,31 @@ def build_iiwa14_sharpa_teleop_pipeline():
     retargeting_dir.mkdir(parents=True, exist_ok=True)
 
     def prepare_dex_config(arm_usd: Path, config_name: str) -> tuple[Path, Path]:
-        urdf_path, _ = convert_usd_to_urdf(str(arm_usd), str(retargeting_dir / arm_usd.stem), force_conversion=False)
+        # These USDs contain valid physics joints, but the robot-level joint and
+        # link relationships are empty. The URDF exporter follows those lists
+        # and otherwise silently drops the SHARPA hand. Populate the lists on a
+        # temporary USD copy so the source asset remains untouched.
+        from pxr import Usd
+
+        stage = Usd.Stage.Open(str(arm_usd))
+        if stage is None:
+            raise RuntimeError(f"Could not open SHARPA USD asset: {arm_usd}")
+        robot_prim = stage.GetPrimAtPath("/kuka_sharpa")
+        joint_paths = []
+        link_paths = set()
+        for prim in stage.Traverse():
+            if prim.GetTypeName().startswith("Physics") and prim.GetTypeName().endswith("Joint"):
+                joint_paths.append(prim.GetPath())
+                for relationship_name in ("physics:body0", "physics:body1"):
+                    relationship = prim.GetRelationship(relationship_name)
+                    if relationship:
+                        link_paths.update(relationship.GetTargets())
+        robot_prim.GetRelationship("isaac:physics:robotJoints").SetTargets(joint_paths)
+        robot_prim.GetRelationship("isaac:physics:robotLinks").SetTargets(sorted(link_paths))
+        export_usd = retargeting_dir / f"{arm_usd.stem}_with_robot_joints.usda"
+        stage.GetRootLayer().Export(str(export_usd))
+
+        urdf_path, _ = convert_usd_to_urdf(str(export_usd), str(retargeting_dir / arm_usd.stem), force_conversion=True)
         # Dex-retargeting requires a scalar-coordinate Pinocchio model
         # (nq == nv). The USD exporter may represent the robot root with a
         # floating/planar/spherical joint. Fix those special joints in this
@@ -97,6 +121,15 @@ def build_iiwa14_sharpa_teleop_pipeline():
                 changed = True
         if changed:
             tree.write(urdf_path, encoding="utf-8", xml_declaration=True)
+
+        exported_joint_names = {joint.get("name") for joint in tree.getroot().findall("joint")}
+        configured_joint_names = LEFT_HAND_JOINTS if "left" in config_name else RIGHT_HAND_JOINTS
+        missing_joint_names = sorted(set(configured_joint_names) - exported_joint_names)
+        if missing_joint_names:
+            raise RuntimeError(
+                f"USD-to-URDF export for {arm_usd.name} is missing SHARPA joints: {missing_joint_names}. "
+                "Check the USD robotJoints/robotLinks relationships."
+            )
 
         config = yaml.safe_load((_DEX_CONFIG_DIR / config_name).read_text())
         config["retargeting"]["urdf_path"] = urdf_path
