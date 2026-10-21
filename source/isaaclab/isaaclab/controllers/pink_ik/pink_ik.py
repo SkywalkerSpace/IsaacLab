@@ -178,12 +178,17 @@ class PinkIKController:
         if isaac_lab_joint_names is None:
             raise ValueError("isaac_lab_joint_names should not be None")
 
-        # Create reordering arrays for all joints
+        # USD-to-URDF export may add a virtual ``floating_base`` joint and may
+        # omit fixed/hand joints that remain in the Isaac articulation. Keep
+        # Pink-only joints at their configured initial position and ignore
+        # articulation-only joints in the full-model mapping.
+        isaac_joint_indices = {name: index for index, name in enumerate(isaac_lab_joint_names)}
+        pink_joint_indices = {name: index for index, name in enumerate(pink_joint_names)}
         self.isaac_lab_to_pink_ordering = np.array(
-            [isaac_lab_joint_names.index(pink_joint) for pink_joint in pink_joint_names]
+            [isaac_joint_indices.get(pink_joint, -1) for pink_joint in pink_joint_names]
         )
         self.pink_to_isaac_lab_ordering = np.array(
-            [pink_joint_names.index(isaac_lab_joint) for isaac_lab_joint in isaac_lab_joint_names]
+            [pink_joint_indices.get(isaac_joint, -1) for isaac_joint in isaac_lab_joint_names]
         )
         # Create reordering arrays for controlled joints only
         pink_controlled_joint_names = self.pink_configuration.controlled_joint_names_pinocchio_order
@@ -238,7 +243,9 @@ class PinkIKController:
         curr_controlled_joint_pos = [curr_joint_pos[i] for i in self.controlled_joint_indices]
 
         # Initialize joint positions for Pink, change from isaac_lab to pink/pinocchio joint ordering.
-        joint_positions_pink = curr_joint_pos[self.isaac_lab_to_pink_ordering]
+        joint_positions_pink = self.init_joint_positions.copy()
+        mapped_joints = self.isaac_lab_to_pink_ordering >= 0
+        joint_positions_pink[mapped_joints] = curr_joint_pos[self.isaac_lab_to_pink_ordering[mapped_joints]]
 
         # Update Pink's robot configuration with the current joint positions
         self.pink_configuration.update(joint_positions_pink)
