@@ -51,6 +51,7 @@ _ISAACLAB_ROOT = Path(__file__).resolve().parents[4]
 _ROBOT_ASSET_DIR = _ISAACLAB_ROOT / "convert/assets/robots"
 _LEFT_ARM_URDF = _ROBOT_ASSET_DIR / "iiwa14_left_sharpa_adjusted_restricted.urdf"
 _RIGHT_ARM_URDF = _ROBOT_ASSET_DIR / "iiwa14_right_sharpa_mirror_restricted.urdf"
+_URDF_IMPORT_DIR = Path(tempfile.gettempdir()) / "isaaclab_sharpa_urdf_import"
 _DEX_CONFIG_DIR = Path(__file__).resolve().parent / "assets/dex_retargeting"
 
 LEFT_HAND_JOINTS = [
@@ -224,7 +225,10 @@ class Iiwa14SharpaPickPlaceSceneCfg(InteractiveSceneCfg):
     left_arm: ArticulationCfg = ArticulationCfg(
         prim_path="{ENV_REGEX_NS}/Robot/LeftArm",
         spawn=sim_utils.UrdfFileCfg(
-            asset_path=str(_LEFT_ARM_URDF), fix_base=True, merge_fixed_joints=False
+            asset_path=str(_LEFT_ARM_URDF),
+            usd_dir=str(_URDF_IMPORT_DIR / "left"),
+            fix_base=True,
+            merge_fixed_joints=False,
         ),
         init_state=ArticulationCfg.InitialStateCfg(pos=(-0.22, 0.0, 0.86), joint_pos={".*": 0.0}),
         actuators={"arm_and_hand": ImplicitActuatorCfg(joint_names_expr=[".*"], stiffness=400.0, damping=40.0)},
@@ -232,7 +236,10 @@ class Iiwa14SharpaPickPlaceSceneCfg(InteractiveSceneCfg):
     right_arm: ArticulationCfg = ArticulationCfg(
         prim_path="{ENV_REGEX_NS}/Robot/RightArm",
         spawn=sim_utils.UrdfFileCfg(
-            asset_path=str(_RIGHT_ARM_URDF), fix_base=True, merge_fixed_joints=False
+            asset_path=str(_RIGHT_ARM_URDF),
+            usd_dir=str(_URDF_IMPORT_DIR / "right"),
+            fix_base=True,
+            merge_fixed_joints=False,
         ),
         init_state=ArticulationCfg.InitialStateCfg(pos=(0.22, 0.0, 0.86), joint_pos={".*": 0.0}),
         actuators={"arm_and_hand": ImplicitActuatorCfg(joint_names_expr=[".*"], stiffness=400.0, damping=40.0)},
