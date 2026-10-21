@@ -7,6 +7,7 @@
 
 from pathlib import Path
 import tempfile
+import xml.etree.ElementTree as ET
 
 import yaml
 
@@ -14,7 +15,12 @@ import isaaclab.envs.mdp as base_mdp
 import isaaclab.sim as sim_utils
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
-from isaaclab.controllers.pink_ik import DampingTaskCfg, FrameTaskCfg, PinkIKControllerCfg
+from isaaclab.controllers.pink_ik import (
+    DampingTaskCfg,
+    FrameTaskCfg,
+    NullSpacePostureTaskCfg,
+    PinkIKControllerCfg,
+)
 from isaaclab.controllers.utils import convert_usd_to_urdf
 from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.managers import ActionTermCfg, EventTermCfg as EventTerm
@@ -46,6 +52,7 @@ _TELEOP_AVAILABLE = True
 _ISAACLAB_ROOT = Path(__file__).resolve().parents[4]
 _LEFT_ARM_USD = _ISAACLAB_ROOT / "convert/assets/iiwa14_left_sharpa_adjusted_restricted.usd"
 _RIGHT_ARM_USD = _ISAACLAB_ROOT / "convert/assets/iiwa14_right_sharpa_mirror_restricted.usd"
+_IK_URDF_OUTPUT_DIR = Path(tempfile.gettempdir()) / "isaaclab_sharpa_ik_urdf"
 _DEX_CONFIG_DIR = Path(__file__).resolve().parent / "assets/dex_retargeting"
 
 LEFT_HAND_JOINTS = [
@@ -77,6 +84,20 @@ def build_iiwa14_sharpa_teleop_pipeline():
 
     def prepare_dex_config(arm_usd: Path, config_name: str) -> tuple[Path, Path]:
         urdf_path, _ = convert_usd_to_urdf(str(arm_usd), str(retargeting_dir / arm_usd.stem), force_conversion=False)
+        # Dex-retargeting requires a scalar-coordinate Pinocchio model
+        # (nq == nv). The USD exporter may represent the robot root with a
+        # floating/planar/spherical joint. Fix those special joints in this
+        # temporary retargeting model; hand revolute joints and USD-derived
+        # geometry remain unchanged.
+        tree = ET.parse(urdf_path)
+        changed = False
+        for joint in tree.getroot().findall("joint"):
+            if joint.get("type") in {"floating", "planar", "spherical"}:
+                joint.set("type", "fixed")
+                changed = True
+        if changed:
+            tree.write(urdf_path, encoding="utf-8", xml_declaration=True)
+
         config = yaml.safe_load((_DEX_CONFIG_DIR / config_name).read_text())
         config["retargeting"]["urdf_path"] = urdf_path
         config_path = retargeting_dir / config_name
@@ -165,7 +186,7 @@ def build_iiwa14_sharpa_teleop_pipeline():
     return OutputCombiner({"action": reorderer.output("output")}), [left_hand, right_hand]
 
 
-def _make_arm_ik_action(arm_name: str, eef_name: str, hand_joint_names: list[str], usd_path: Path):
+def _make_arm_ik_action(arm_name: str, eef_name: str, hand_joint_names: list[str]):
     """Create the one-frame Pink action config for one arm articulation."""
     return IiwaSharpaPinkIKActionCfg(
         asset_name=arm_name,
@@ -174,9 +195,9 @@ def _make_arm_ik_action(arm_name: str, eef_name: str, hand_joint_names: list[str
         target_eef_link_names={f"{arm_name}_wrist": eef_name},
         enable_gravity_compensation=False,
         controller=PinkIKControllerCfg(
-            usd_path=str(usd_path),
             articulation_name=arm_name,
             base_link_name="iiwa14_link_0",
+            urdf_output_dir=str(_IK_URDF_OUTPUT_DIR / arm_name),
             num_hand_joints=len(hand_joint_names),
             show_ik_warnings=False,
             fail_on_joint_limit_violation=False,
@@ -189,6 +210,12 @@ def _make_arm_ik_action(arm_name: str, eef_name: str, hand_joint_names: list[str
                     gain=0.5,
                 ),
                 DampingTaskCfg(cost=0.5),
+                NullSpacePostureTaskCfg(
+                    cost=0.5,
+                    lm_damping=1.0,
+                    controlled_frames=[eef_name],
+                    controlled_joints=[f"iiwa14_joint_{index}" for index in range(1, 8)],
+                ),
             ],
             fixed_input_tasks=[],
         ),
@@ -258,10 +285,10 @@ class Iiwa14SharpaActionsCfg:
     # Pink's frame list. Control the matching last IIWA link and convert palm
     # targets to that link in IiwaSharpaPinkIKAction.
     left_arm: ActionTermCfg = _make_arm_ik_action(
-        "left_arm", "iiwa14_link_7", LEFT_HAND_JOINTS, _LEFT_ARM_USD
+        "left_arm", "iiwa14_link_7", LEFT_HAND_JOINTS
     )
     right_arm: ActionTermCfg = _make_arm_ik_action(
-        "right_arm", "iiwa14_link_7", RIGHT_HAND_JOINTS, _RIGHT_ARM_USD
+        "right_arm", "iiwa14_link_7", RIGHT_HAND_JOINTS
     )
 
 
@@ -336,6 +363,9 @@ class Iiwa14SharpaPickPlaceEnvCfg(ManagerBasedRLEnvCfg):
         self.episode_length_s = 20.0
         self.sim.dt = 1.0 / 120.0
         self.sim.render_interval = self.decimation
+        # Keep Pink's kinematics model tied to the exact USDs loaded in-scene.
+        self.actions.left_arm.controller.usd_path = self.scene.left_arm.spawn.usd_path
+        self.actions.right_arm.controller.usd_path = self.scene.right_arm.spawn.usd_path
         self.xr = XrCfg(anchor_pos=(0.0, 0.0, 0.0), anchor_rot=(0.0, 0.0, 0.0, 1.0))
         self.isaac_teleop = IsaacTeleopCfg(
             pipeline_builder=lambda: build_iiwa14_sharpa_teleop_pipeline()[0],
