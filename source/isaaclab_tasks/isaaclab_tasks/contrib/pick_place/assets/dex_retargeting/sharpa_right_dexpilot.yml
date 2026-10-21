@@ -1,6 +1,6 @@
 retargeting:
   type: DexPilot
-  urdf_path: ""  # Filled from the corresponding USD at runtime.
+  urdf_path: ""  # Filled from the corresponding robot URDF at runtime.
   wrist_link_name: right_hand_C_MC
   finger_tip_link_names:
     - right_thumb_fingertip
