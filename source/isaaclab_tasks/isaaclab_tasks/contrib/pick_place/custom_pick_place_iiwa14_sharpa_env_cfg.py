@@ -96,7 +96,7 @@ def build_iiwa14_sharpa_teleop_pipeline():
             zero_out_xy_rotation=False,
             use_wrist_rotation=True,
             use_wrist_position=True,
-            # Target the SHARPA palm frame: the URDF's +15 deg mount and -90 deg
+            # Target the SHARPA palm frame: the USD's +15 deg mount and -90 deg
             # wrist fixed rotations combine to -75 deg from the IIWA tool frame.
             target_offset_yaw=-75.0,
         ),
@@ -108,8 +108,8 @@ def build_iiwa14_sharpa_teleop_pipeline():
             zero_out_xy_rotation=False,
             use_wrist_rotation=True,
             use_wrist_position=True,
-            # Match the same hand_C_MC target frame as the right URDF's fixed chain.
-            target_offset_yaw=-75.0,
+            # The right USD mounts the palm at +15 deg from the IIWA tool frame.
+            target_offset_yaw=15.0,
         ),
         name="right_ee_pose",
     ).connect({HandsSource.RIGHT: transformed_hands.output(HandsSource.RIGHT)})
@@ -254,9 +254,14 @@ class Iiwa14SharpaPickPlaceSceneCfg(InteractiveSceneCfg):
 class Iiwa14SharpaActionsCfg:
     """One wrist-pose Pink IK action for each arm and its SHARPA hand."""
 
-    left_arm: ActionTermCfg = _make_arm_ik_action("left_arm", "left_hand_C_MC", LEFT_HAND_JOINTS, _LEFT_ARM_USD)
+    # The USD contains the palm, but USD-to-URDF export currently omits it from
+    # Pink's frame list. Control the matching last IIWA link and convert palm
+    # targets to that link in IiwaSharpaPinkIKAction.
+    left_arm: ActionTermCfg = _make_arm_ik_action(
+        "left_arm", "iiwa14_link_7", LEFT_HAND_JOINTS, _LEFT_ARM_USD
+    )
     right_arm: ActionTermCfg = _make_arm_ik_action(
-        "right_arm", "right_hand_C_MC", RIGHT_HAND_JOINTS, _RIGHT_ARM_USD
+        "right_arm", "iiwa14_link_7", RIGHT_HAND_JOINTS, _RIGHT_ARM_USD
     )
 
 
