@@ -14,6 +14,7 @@ Reference:
 
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING, cast
 
 import numpy as np
@@ -91,7 +92,13 @@ class PinkIKController:
             )
         else:
             urdf_path = retrieve_file_path(cfg.urdf_path) if cfg.urdf_path else cfg.urdf_path
-            mesh_path = retrieve_file_path(cfg.mesh_path) if cfg.mesh_path else cfg.mesh_path
+            if cfg.mesh_path and os.path.isdir(cfg.mesh_path):
+                # Pinocchio accepts a directory of package meshes here. The
+                # generic asset resolver handles files, but treats a directory
+                # as a remote asset path and may fail while building its cache.
+                mesh_path = os.path.abspath(cfg.mesh_path)
+            else:
+                mesh_path = retrieve_file_path(cfg.mesh_path) if cfg.mesh_path else cfg.mesh_path
 
         if urdf_path is None:
             raise ValueError("Either urdf_path or usd_path must be provided in the controller configuration")
