@@ -82,56 +82,147 @@ def build_iiwa14_sharpa_teleop_pipeline():
     retargeting_dir = Path(tempfile.gettempdir()) / "isaaclab_sharpa_retargeting"
     retargeting_dir.mkdir(parents=True, exist_ok=True)
 
-    def prepare_dex_config(arm_usd: Path, config_name: str) -> tuple[Path, Path]:
-        # These USDs contain valid physics joints, but the robot-level joint and
-        # link relationships are empty. The URDF exporter follows those lists
-        # and otherwise silently drops the SHARPA hand. Populate the lists on a
-        # temporary USD copy so the source asset remains untouched.
-        from pxr import Usd
+    def usd_transform_to_origin(matrix):
+        """Convert a USD row-vector transform into a URDF xyz/rpy origin."""
+        from pxr import Gf
+
+        transform = Gf.Transform(matrix)
+        xyz = transform.GetTranslation()
+        euler = transform.GetRotation().GetEuler()
+        return " ".join(f"{float(value):.9g}" for value in xyz), " ".join(
+            f"{float(value) * 3.141592653589793 / 180.0:.9g}" for value in euler
+        )
+
+    def add_origin(parent, xyz, rpy):
+        ET.SubElement(parent, "origin", xyz=xyz, rpy=rpy)
+
+    def augment_urdf_with_usd_hand(arm_usd: Path, urdf_path: str, side: str, hand_joint_names: list[str]):
+        """Add the SHARPA kinematic chain to the arm URDF, using USD physics joints as source."""
+        from pxr import Gf, Usd, UsdGeom
 
         stage = Usd.Stage.Open(str(arm_usd))
         if stage is None:
             raise RuntimeError(f"Could not open SHARPA USD asset: {arm_usd}")
-        robot_prim = stage.GetPrimAtPath("/kuka_sharpa")
-        joint_paths = []
-        link_paths = set()
+        root = ET.parse(urdf_path)
+        robot = root.getroot()
+        existing_links = {link.get("name") for link in robot.findall("link")}
+        existing_joints = {joint.get("name") for joint in robot.findall("joint")}
+        link7 = "iiwa14_link_7"
+        if link7 not in existing_links:
+            raise RuntimeError(f"Arm URDF {urdf_path} does not contain expected parent link {link7}")
+
+        cache = UsdGeom.XformCache(Usd.TimeCode.Default())
+        body_names = {}
+        joint_prims = {}
         for prim in stage.Traverse():
             if prim.GetTypeName().startswith("Physics") and prim.GetTypeName().endswith("Joint"):
-                joint_paths.append(prim.GetPath())
-                for relationship_name in ("physics:body0", "physics:body1"):
-                    relationship = prim.GetRelationship(relationship_name)
-                    if relationship:
-                        link_paths.update(relationship.GetTargets())
-        robot_prim.GetRelationship("isaac:physics:robotJoints").SetTargets(joint_paths)
-        robot_prim.GetRelationship("isaac:physics:robotLinks").SetTargets(sorted(link_paths))
-        export_usd = retargeting_dir / f"{arm_usd.stem}_with_robot_joints.usda"
-        stage.GetRootLayer().Export(str(export_usd))
+                joint_prims[prim.GetName()] = prim
+        expected = set(hand_joint_names)
+        missing_usd_joints = sorted(expected - set(joint_prims))
+        if missing_usd_joints:
+            raise RuntimeError(f"USD {arm_usd.name} does not contain configured hand joints: {missing_usd_joints}")
 
-        # The generic helper leaves root_prim_path unset. In these assets that
-        # lets the exporter choose the arm-only articulation and omit the hand
-        # joints, even after the robot relationship targets are populated.
-        from isaaclab.sim.utils import enable_extension
-
-        enable_extension("isaacsim.asset.exporter.urdf")
-        from isaacsim.asset.exporter.urdf import UsdToUrdfConverter
-
-        output_dir = retargeting_dir / arm_usd.stem
-        urdf_output_dir = output_dir / "urdf"
-        urdf_output_dir.mkdir(parents=True, exist_ok=True)
-        (output_dir / "meshes").mkdir(parents=True, exist_ok=True)
-        urdf_path = urdf_output_dir / f"{arm_usd.stem}_with_robot_joints.urdf"
-        converter = UsdToUrdfConverter(
-            stage=str(export_usd),
-            root_prim_path="/kuka_sharpa",
-            mesh_dir_name="../meshes",
-            mesh_path_prefix="../meshes/",
-            visualize_collision_meshes=False,
+        hand_root_name = f"{side}_hand_C_MC"
+        hand_root_prim = next(
+            (prim for prim in stage.Traverse() if prim.GetName() == hand_root_name), None
         )
-        converter.convert(str(urdf_path))
-        urdf_path = str(urdf_path)
+        arm_link_prim = next(
+            (prim for prim in stage.Traverse() if prim.GetName() == link7), None
+        )
+        if hand_root_prim is None or arm_link_prim is None:
+            raise RuntimeError(f"USD {arm_usd.name} is missing the arm or palm frame")
+        bridge = cache.GetLocalToWorldTransform(hand_root_prim) * cache.GetLocalToWorldTransform(
+            arm_link_prim
+        ).GetInverse()
+        bridge_xyz, bridge_rpy = usd_transform_to_origin(bridge)
+        if hand_root_name not in existing_links:
+            ET.SubElement(robot, "link", name=hand_root_name)
+            existing_links.add(hand_root_name)
+        if f"{side}_arm_to_palm" not in existing_joints:
+            bridge_joint = ET.SubElement(robot, "joint", name=f"{side}_arm_to_palm", type="fixed")
+            ET.SubElement(bridge_joint, "parent", link=link7)
+            ET.SubElement(bridge_joint, "child", link=hand_root_name)
+            add_origin(bridge_joint, bridge_xyz, bridge_rpy)
+
+        for name in hand_joint_names:
+            if name in existing_joints:
+                continue
+            prim = joint_prims[name]
+            body0 = prim.GetRelationship("physics:body0").GetTargets()[0]
+            body1 = prim.GetRelationship("physics:body1").GetTargets()[0]
+            parent_name = stage.GetPrimAtPath(body0).GetName()
+            child_name = stage.GetPrimAtPath(body1).GetName()
+            body_names[parent_name] = body0
+            body_names[child_name] = body1
+            for body_name in (parent_name, child_name):
+                if body_name not in existing_links:
+                    ET.SubElement(robot, "link", name=body_name)
+                    existing_links.add(body_name)
+
+            pos0 = prim.GetAttribute("physics:localPos0").Get()
+            rot0 = prim.GetAttribute("physics:localRot0").Get()
+            pos1 = prim.GetAttribute("physics:localPos1").Get()
+            rot1 = prim.GetAttribute("physics:localRot1").Get()
+            quat0 = Gf.Quatd(float(rot0.GetReal()), Gf.Vec3d(*map(float, rot0.GetImaginary())))
+            quat1 = Gf.Quatd(float(rot1.GetReal()), Gf.Vec3d(*map(float, rot1.GetImaginary())))
+            parent_transform = Gf.Transform()
+            parent_transform.SetTranslation(Gf.Vec3d(*map(float, pos0)))
+            parent_transform.SetRotation(Gf.Rotation(quat0))
+            origin_xyz, origin_rpy = usd_transform_to_origin(parent_transform.GetMatrix())
+
+            frame_name = f"dex_joint_frame_{name}"
+            ET.SubElement(robot, "link", name=frame_name)
+            revolute = ET.SubElement(robot, "joint", name=name, type="revolute")
+            ET.SubElement(revolute, "parent", link=parent_name)
+            ET.SubElement(revolute, "child", link=frame_name)
+            add_origin(revolute, origin_xyz, origin_rpy)
+            axis = str(prim.GetAttribute("physics:axis").Get()).upper()
+            ET.SubElement(revolute, "axis", xyz={"X": "1 0 0", "Y": "0 1 0", "Z": "0 0 1"}[axis])
+            lower = float(prim.GetAttribute("physics:lowerLimit").Get()) * 3.141592653589793 / 180.0
+            upper = float(prim.GetAttribute("physics:upperLimit").Get()) * 3.141592653589793 / 180.0
+            limit = ET.SubElement(revolute, "limit", lower=f"{lower:.9g}", upper=f"{upper:.9g}")
+            limit.set("effort", "3.3")
+            limit.set("velocity", "12.0")
+            existing_joints.add(name)
+
+            child_transform = Gf.Transform()
+            child_transform.SetTranslation(Gf.Vec3d(*map(float, pos1)))
+            child_transform.SetRotation(Gf.Rotation(quat1))
+            fixed_xyz, fixed_rpy = usd_transform_to_origin(child_transform.GetMatrix().GetInverse())
+            fixed = ET.SubElement(robot, "joint", name=f"{name}_body_offset", type="fixed")
+            ET.SubElement(fixed, "parent", link=frame_name)
+            ET.SubElement(fixed, "child", link=child_name)
+            add_origin(fixed, fixed_xyz, fixed_rpy)
+
+        # DexPilot expects fingertip frame names. The USD hand calls the same
+        # terminal rigid bodies *_DP, so add fixed aliases at those USD frames.
+        for finger in ("thumb", "index", "middle", "ring", "pinky"):
+            terminal_name = f"{side}_{finger}_DP"
+            terminal_prim = next((prim for prim in stage.Traverse() if prim.GetName() == terminal_name), None)
+            alias_name = f"{side}_{finger}_fingertip"
+            if terminal_prim is None:
+                raise RuntimeError(f"USD {arm_usd.name} does not contain fingertip body {terminal_name}")
+            if terminal_name not in existing_links:
+                ET.SubElement(robot, "link", name=terminal_name)
+                existing_links.add(terminal_name)
+            ET.SubElement(robot, "link", name=alias_name)
+            alias_joint = ET.SubElement(robot, "joint", name=f"{alias_name}_fixed", type="fixed")
+            ET.SubElement(alias_joint, "parent", link=terminal_name)
+            ET.SubElement(alias_joint, "child", link=alias_name)
+            add_origin(alias_joint, "0 0 0", "0 0 0")
+
+        root.write(urdf_path, encoding="utf-8", xml_declaration=True)
+
+    def prepare_dex_config(arm_usd: Path, config_name: str) -> tuple[Path, Path]:
+        urdf_path, _ = convert_usd_to_urdf(
+            str(arm_usd), str(retargeting_dir / arm_usd.stem), force_conversion=True
+        )
         from isaaclab.controllers.utils import _sanitize_urdf_for_pinocchio
 
         _sanitize_urdf_for_pinocchio(urdf_path)
+        side = "left" if "left" in config_name else "right"
+        hand_joints = LEFT_HAND_JOINTS if side == "left" else RIGHT_HAND_JOINTS
+        augment_urdf_with_usd_hand(arm_usd, urdf_path, side, hand_joints)
         # Dex-retargeting requires a scalar-coordinate Pinocchio model
         # (nq == nv). The USD exporter may represent the robot root with a
         # floating/planar/spherical joint. Fix those special joints in this
