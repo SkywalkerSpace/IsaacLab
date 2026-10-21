@@ -107,7 +107,31 @@ def build_iiwa14_sharpa_teleop_pipeline():
         export_usd = retargeting_dir / f"{arm_usd.stem}_with_robot_joints.usda"
         stage.GetRootLayer().Export(str(export_usd))
 
-        urdf_path, _ = convert_usd_to_urdf(str(export_usd), str(retargeting_dir / arm_usd.stem), force_conversion=True)
+        # The generic helper leaves root_prim_path unset. In these assets that
+        # lets the exporter choose the arm-only articulation and omit the hand
+        # joints, even after the robot relationship targets are populated.
+        from isaaclab.sim.utils import enable_extension
+
+        enable_extension("isaacsim.asset.exporter.urdf")
+        from isaacsim.asset.exporter.urdf import UsdToUrdfConverter
+
+        output_dir = retargeting_dir / arm_usd.stem
+        urdf_output_dir = output_dir / "urdf"
+        urdf_output_dir.mkdir(parents=True, exist_ok=True)
+        (output_dir / "meshes").mkdir(parents=True, exist_ok=True)
+        urdf_path = urdf_output_dir / f"{arm_usd.stem}_with_robot_joints.urdf"
+        converter = UsdToUrdfConverter(
+            stage=str(export_usd),
+            root_prim_path="/kuka_sharpa",
+            mesh_dir_name="../meshes",
+            mesh_path_prefix="../meshes/",
+            visualize_collision_meshes=False,
+        )
+        converter.convert(str(urdf_path))
+        urdf_path = str(urdf_path)
+        from isaaclab.controllers.utils import _sanitize_urdf_for_pinocchio
+
+        _sanitize_urdf_for_pinocchio(urdf_path)
         # Dex-retargeting requires a scalar-coordinate Pinocchio model
         # (nq == nv). The USD exporter may represent the robot root with a
         # floating/planar/spherical joint. Fix those special joints in this
