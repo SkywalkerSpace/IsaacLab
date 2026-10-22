@@ -38,14 +38,14 @@ class CustomPickPlaceGR1T2MimicSceneCfg(CollectSceneCfg):
         offset_pos=(0.11999996, -0.00000233, 0.74674994),
         offset_rot=(-0.69303199, 0.69304552, -0.14034840, 0.14034565),
     )
-    robot_pov_cam.height = 256
-    robot_pov_cam.width = 256
+    robot_pov_cam.height = 512
+    robot_pov_cam.width = 512
 
     left_wrist_cam = CameraCfg(
         prim_path="{ENV_REGEX_NS}/Robot/left_hand_pitch_link/LeftWristCam",
         update_period=0.0,
-        height=256,
-        width=256,
+        height=512,
+        width=512,
         data_types=["rgb"],
         spawn=sim_utils.PinholeCameraCfg(focal_length=18.15, clipping_range=(0.1, 2.0)),
         # Mirror the right camera across the palm: mount on +Y and aim toward the fingers (-Z).
@@ -56,8 +56,8 @@ class CustomPickPlaceGR1T2MimicSceneCfg(CollectSceneCfg):
     right_wrist_cam = CameraCfg(
         prim_path="{ENV_REGEX_NS}/Robot/right_hand_pitch_link/RightWristCam",
         update_period=0.0,
-        height=256,
-        width=256,
+        height=512,
+        width=512,
         data_types=["rgb"],
         spawn=sim_utils.PinholeCameraCfg(focal_length=18.15, clipping_range=(0.1, 2.0)),
         offset=CameraCfg.OffsetCfg(
@@ -158,6 +158,12 @@ class CustomPickPlaceGR1T2MimicEnvCfg(CollectPickPlaceGR1T2EnvCfg, MimicEnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
+
+        # Mimic trajectories are sampled once per policy/control step. Render
+        # once per decimated step as well, so recorded/replayed videos have the
+        # same temporal rate (120 Hz physics / 6 = 20 Hz), instead of emitting
+        # multiple frames for each action and playing the motion too quickly.
+        self.sim.render_interval = self.decimation
 
         self.datagen_config.name = "custom_gr1t2_pick_place_D0"
         self.datagen_config.generation_guarantee = True
