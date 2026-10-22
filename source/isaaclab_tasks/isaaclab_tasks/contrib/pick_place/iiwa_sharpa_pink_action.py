@@ -5,6 +5,7 @@
 
 """Pink IK action adapter for a single arm in the two-articulation SHARPA scene."""
 
+from isaaclab.controllers.pink_ik import PinkIKController
 from isaaclab.controllers.pink_ik.pink_tasks import FrameTask, LocalFrameTask
 from isaaclab.envs.mdp.actions.pink_task_space_actions import PinkInverseKinematicsAction
 from isaaclab.envs.mdp.actions.pink_actions_cfg import PinkInverseKinematicsActionCfg
