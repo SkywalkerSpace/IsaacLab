@@ -40,6 +40,33 @@ class IiwaSharpaPinkIKAction(PinkInverseKinematicsAction):
                 target.rotation = rotation[env_index].cpu().numpy()
                 task.set_target(target)
 
+    def _initialize_joint_info(self) -> None:
+        """Keep Pink's arm joint space separate from the articulation's hand joints."""
+        self._isaaclab_controlled_joint_ids, self._isaaclab_controlled_joint_names = self._asset.find_joints(
+            self.cfg.pink_controlled_joint_names
+        )
+        self.cfg.controller.joint_names = self._isaaclab_controlled_joint_names
+        # This URDF contains only the seven IIWA joints. The full articulation
+        # also contains 22 SHARPA joints, which are commanded directly below.
+        self._isaaclab_all_joint_ids = list(self._isaaclab_controlled_joint_ids)
+        self.cfg.controller.all_joint_names = self._isaaclab_controlled_joint_names
+
+        self._hand_joint_ids, self._hand_joint_names = self._asset.find_joints(self.cfg.hand_joint_names)
+        self._controlled_joint_ids = self._isaaclab_controlled_joint_ids + self._hand_joint_ids
+        self._controlled_joint_names = self._isaaclab_controlled_joint_names + self._hand_joint_names
+
+    def _compute_ik_solutions(self):
+        """Pass the arm-only state expected by the seven-joint Pink URDF."""
+        articulation_joint_pos = self._asset.data.joint_pos.torch.cpu().numpy()
+        arm_joint_pos = articulation_joint_pos[:, self._isaaclab_controlled_joint_ids]
+        return self._compute_ik_solutions_for_arm(arm_joint_pos)
+
+    def _compute_ik_solutions_for_arm(self, arm_joint_pos):
+        """Compute each environment's IK result from its arm joint positions."""
+        return __import__("torch").stack(
+            [controller.compute(arm_joint_pos[index], self._sim_dt) for index, controller in enumerate(self._ik_controllers)]
+        )
+
     def _initialize_ik_controllers(self) -> None:
         assert self._env.num_envs > 0, "Number of environments specified are less than 1."
         robot_cfg = getattr(self._env.scene.cfg, self.cfg.controller.articulation_name)
