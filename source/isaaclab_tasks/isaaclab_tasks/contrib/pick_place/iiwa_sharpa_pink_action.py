@@ -5,6 +5,8 @@
 
 """Pink IK action adapter for a single arm in the two-articulation SHARPA scene."""
 
+import numpy as np
+
 from isaaclab.controllers.pink_ik import PinkIKController
 from isaaclab.controllers.pink_ik.pink_tasks import FrameTask, LocalFrameTask
 from isaaclab.envs.mdp.actions.pink_task_space_actions import PinkInverseKinematicsAction
@@ -46,10 +48,11 @@ class IiwaSharpaPinkIKAction(PinkInverseKinematicsAction):
             self.cfg.pink_controlled_joint_names
         )
         self.cfg.controller.joint_names = self._isaaclab_controlled_joint_names
-        # This URDF contains only the seven IIWA joints. The full articulation
-        # also contains 22 SHARPA joints, which are commanded directly below.
-        self._isaaclab_all_joint_ids = list(range(len(self._isaaclab_controlled_joint_ids)))
-        self.cfg.controller.all_joint_names = self._isaaclab_controlled_joint_names
+        # Pink's URDF has the seven arm joints; Isaac's articulation also has
+        # 22 hand joints. Pink's mapping indexes the full state passed by the
+        # parent action term, so retain the full articulation name list here.
+        self._isaaclab_all_joint_ids = list(range(len(self._asset.data.joint_names)))
+        self.cfg.controller.all_joint_names = self._asset.data.joint_names
 
         self._hand_joint_ids, self._hand_joint_names = self._asset.find_joints(self.cfg.hand_joint_names)
         self._controlled_joint_ids = self._isaaclab_controlled_joint_ids + self._hand_joint_ids
@@ -67,6 +70,26 @@ class IiwaSharpaPinkIKAction(PinkInverseKinematicsAction):
             )
             for _ in range(self._env.num_envs)
         ]
+        # Pink's generic mapper assumes its model joints all exist in Isaac.
+        # The paired URDF omits hand joints, so construct only the valid map
+        # entries while keeping articulation indexing for the full state.
+        for controller in self._ik_controllers:
+            pink_names = controller.pink_configuration.all_joint_names_pinocchio_order
+            isaac_names = self.cfg.controller.all_joint_names
+            pink_controlled_names = controller.pink_configuration.controlled_joint_names_pinocchio_order
+            isaac_controlled_names = self.cfg.controller.joint_names
+            controller.isaac_lab_to_pink_ordering = np.array(
+                [isaac_names.index(name) if name in isaac_names else -1 for name in pink_names]
+            )
+            controller.pink_to_isaac_lab_ordering = np.array(
+                [pink_names.index(name) if name in pink_names else -1 for name in isaac_names]
+            )
+            controller.isaac_lab_to_pink_controlled_ordering = np.array(
+                [isaac_controlled_names.index(name) for name in pink_controlled_names]
+            )
+            controller.pink_to_isaac_lab_controlled_ordering = np.array(
+                [pink_controlled_names.index(name) for name in isaac_controlled_names]
+            )
 
 
 @configclass
