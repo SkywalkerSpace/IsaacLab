@@ -14,7 +14,6 @@ Reference:
 
 from __future__ import annotations
 
-import os
 from typing import TYPE_CHECKING, cast
 
 import numpy as np
@@ -92,13 +91,7 @@ class PinkIKController:
             )
         else:
             urdf_path = retrieve_file_path(cfg.urdf_path) if cfg.urdf_path else cfg.urdf_path
-            if cfg.mesh_path and os.path.isdir(cfg.mesh_path):
-                # Pinocchio accepts a directory of package meshes here. The
-                # generic asset resolver handles files, but treats a directory
-                # as a remote asset path and may fail while building its cache.
-                mesh_path = os.path.abspath(cfg.mesh_path)
-            else:
-                mesh_path = retrieve_file_path(cfg.mesh_path) if cfg.mesh_path else cfg.mesh_path
+            mesh_path = retrieve_file_path(cfg.mesh_path) if cfg.mesh_path else cfg.mesh_path
 
         if urdf_path is None:
             raise ValueError("Either urdf_path or usd_path must be provided in the controller configuration")
@@ -185,17 +178,12 @@ class PinkIKController:
         if isaac_lab_joint_names is None:
             raise ValueError("isaac_lab_joint_names should not be None")
 
-        # USD-to-URDF export may add a virtual ``floating_base`` joint and may
-        # omit fixed/hand joints that remain in the Isaac articulation. Keep
-        # Pink-only joints at their configured initial position and ignore
-        # articulation-only joints in the full-model mapping.
-        isaac_joint_indices = {name: index for index, name in enumerate(isaac_lab_joint_names)}
-        pink_joint_indices = {name: index for index, name in enumerate(pink_joint_names)}
+        # Create reordering arrays for all joints
         self.isaac_lab_to_pink_ordering = np.array(
-            [isaac_joint_indices.get(pink_joint, -1) for pink_joint in pink_joint_names]
+            [isaac_lab_joint_names.index(pink_joint) for pink_joint in pink_joint_names]
         )
         self.pink_to_isaac_lab_ordering = np.array(
-            [pink_joint_indices.get(isaac_joint, -1) for isaac_joint in isaac_lab_joint_names]
+            [pink_joint_names.index(isaac_lab_joint) for isaac_lab_joint in isaac_lab_joint_names]
         )
         # Create reordering arrays for controlled joints only
         pink_controlled_joint_names = self.pink_configuration.controlled_joint_names_pinocchio_order
@@ -250,9 +238,7 @@ class PinkIKController:
         curr_controlled_joint_pos = [curr_joint_pos[i] for i in self.controlled_joint_indices]
 
         # Initialize joint positions for Pink, change from isaac_lab to pink/pinocchio joint ordering.
-        joint_positions_pink = self.init_joint_positions.copy()
-        mapped_joints = self.isaac_lab_to_pink_ordering >= 0
-        joint_positions_pink[mapped_joints] = curr_joint_pos[self.isaac_lab_to_pink_ordering[mapped_joints]]
+        joint_positions_pink = curr_joint_pos[self.isaac_lab_to_pink_ordering]
 
         # Update Pink's robot configuration with the current joint positions
         self.pink_configuration.update(joint_positions_pink)
